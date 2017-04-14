@@ -15,6 +15,7 @@ function init() {
 
 
 var jsonData;
+
 function buildTable(data) {
 
     // Find the tbody element we are adding the items to
@@ -38,10 +39,17 @@ function buildTable(data) {
 }
 
 function buildModal(data) {
-
+    var modalBody = $('#myModal .modal-body');
     // Basically just loop the columns and make inputs for the data
+    var formHtml = '';
 
+    for (var i = 0; i < data.columns.length; i++) {
+        formHtml += '<div class="form-group">';
+        formHtml += '<label for="exampleInputEmail1">' + data.columns[i].name + '</label>';
+        formHtml += '<input type="email" class="form-control"  id="dval-' + i + '"></div>';
+    }
 
+    modalBody.html(formHtml);
 }
 
 function addRowToTable(rowId) {
@@ -74,7 +82,7 @@ function createTableCell(columnId, rowId) {
     }
 
     // Based on column type we parse the value a bit differently
-    var cellString = '<input id="data-' + rowId + '-' + columnId + '" onkeydown=keyDown(event) onblur=endEdit(this) type="';
+    var cellString = '<input data-col="' + columnId + '" data-row="' + rowId + '" class="form-control" onkeydown=keyDown(event) onblur=endEdit(this) type="';
     switch (column.datatype) {
         case "string":
             cellString += 'text" value="' + rowVal + '"';
@@ -111,14 +119,20 @@ function addNewRow() {
 }
 
 function deleteRow(rowId) {
-    var row = $('#row-' + rowId);
-    console.log(row);
-    row.remove();
-
-    delete jsonData.data[rowId];
+    jsonData.data.splice(rowId, 1);
+    buildTable(jsonData);
 }
 
 function editRow(rowId) {
+
+    // For each item in the row set the value on the input 
+    var index = 0;
+    var rowEle = $('#row-' + rowId);
+    $('#row-' + rowId + '> td > input').each(function () {
+        var modalInput = $('#dval-' + index++).val($(this).val());
+    });
+
+
     $('#myModal').modal('show');
 }
 
@@ -132,10 +146,12 @@ function cancelRowEdit() {
 
 function endEdit(input) {
 
+    console.log("Err");
+
     var inputEle = $(input);
-    var fieldInfo = inputEle.attr('id').split('-');
-    var column = jsonData.columns[+fieldInfo[2]];
-    var row = jsonData.data[+fieldInfo[1]];
+
+    var column = jsonData.columns[inputEle.data('col')];
+    var row = jsonData.data[inputEle.data('row')];
 
     var oldVal = inputEle.data('old');
     var newVal = inputEle.val();
@@ -148,7 +164,7 @@ function endEdit(input) {
 
     // Update the array and the current input value
     inputEle.css('border', '');
-    row[+fieldInfo[2]] = newVal;
+    row[column] = newVal;
     inputEle.attr('data-old', newVal);
 }
 
@@ -156,7 +172,6 @@ function cancelEdit(input) {
     // Set the value to the original value
     var inputEle = $(input);
     inputEle.val(inputEle.data('old'));
-    tableEle = $('#edit-table > tbody').focus();
 }
 
 
