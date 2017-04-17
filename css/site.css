@@ -28,3 +28,8 @@ select {
   padding: 5px;
   margin: 0;
 }
+.table-wrapper {
+  overflow: auto;
+  max-height: 400px;
+  max-width: 100%;
+}

@@ -1,26 +1,21 @@
 // Variables / data sotrage
-var jsonData = {};
 var editRowId = 0;
-var hasInvalidField = false;
 var currTabIndex = 0;
 
-function init() {
-    $.ajax({
-        type: "get",
-        url: "https://api.myjson.com/bins/1fwclf",
-        dataType: "json",
-        success: function (response) {
-            console.log('Data fetched successfully. Begin parse.', response);
+// Not going to be super flexible but for now...
+var tableId = '';
+var tableModalId = '';
+var detailModalId = '';
 
-            // Create the table and the modal for editing
-            createTable('edit-table', response);
-            createForm('myModal .modal-body', response);
-        }
-    });
+function showTable(data) {
+    // Create the table and the modal for editing
+    createForm(data);
+    createTable(data);
+
 
     $('tbody').sortable({
         update: function (event, ui) {
-            rowDropped(ui.item.startPos, ui.item.index());
+            rowDropped(data, ui.item.startPos, ui.item.index());
         },
         start: function (event, ui) {
             ui.item.startPos = ui.item.index();
@@ -28,37 +23,197 @@ function init() {
     });
 
     $('.modal').on('hidden.bs.modal', function (e) {
-        fillTableRows('edit-table');
+        fillTableRows(data, tableId);
+    });
+
+    // present the modal
+    presentTableModal();
+}
+
+function init(dataUrl) {
+
+    $.ajax({
+        type: "get",
+        url: dataUrl,
+        dataType: "json",
+        success: function (response) {
+
+            // Data retrieved succesfully!
+            console.log('Data fetched successfully. Begin parse.', response);
+            showTable(response);
+        }
     });
 }
 
-function createForm(formDiv, data) {
-    var formBody = $('#' + formDiv);
+function makeElement(type, text, className, attributes, events) {
+    var e = document.createElement(type);
+    e.className = className;
+    var keys, i;
+    if (attributes) {
+        keys = Object.keys(attributes);
+        for (var i = 0; i < keys.length; i++)
+            e.setAttribute(keys[i], attributes[keys[i]]);
+    }
+    if (events) {
+        keys = Object.keys(events);
+        for (var i = 0; i < keys.length; i++)
+            e.addEventListener(keys[i], events[keys[i]]);
+    }
+
+    e.innerHTML = text;
+    return e;
+}
+
+function createModal(data, title, prevButton, nextButton) {
+
+    var modalId = 'mdl-' + $('.modal').length;
+    console.log('Generating modal with ID:', modalId);
+
+    // Start with the outer element
+    var modalElement = document.createElement('div');
+    modalElement.setAttribute('id', modalId);
+    modalElement.setAttribute('class', 'modal fade');
+    modalElement.setAttribute('tabindex', '-1');
+    modalElement.setAttribute('data-keyboard', 'false');
+    modalElement.setAttribute('role', 'dialog');
+    modalElement.setAttribute('aria-labelledby', 'myModalLabel');
+
+    // Inner dialog stuff
+    var modalDialog = document.createElement('div');
+    modalDialog.setAttribute('class', 'modal-dialog');
+    modalDialog.setAttribute('role', 'document');
+    modalElement.appendChild(modalDialog);
+
+    // Body of the modal
+    var modalContent = document.createElement('div');
+    modalContent.setAttribute('class', 'modal-content');
+    modalDialog.appendChild(modalContent);
+
+    // Header section
+    var modalHeader = document.createElement('div');
+    modalHeader.setAttribute('class', 'modal-header');
+    modalHeader.innerHTML =
+        '<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>' +
+        '<h4 class="modal-title" id="myModalLabel">' + title + '</h4>' +
+        '</div>';
+
+    modalContent.appendChild(modalHeader);
+
+    // Body of it
+    var modalBody = document.createElement('div');
+    modalBody.setAttribute('class', 'modal-body');
+
+    modalContent.appendChild(modalBody);
+
+    var modalFooter = document.createElement('div');
+    modalFooter.setAttribute('class', 'modal-footer');
+
+    var bodyElements = [
+        makeElement('button', 'Close', 'btn btn-default', {
+            'data-dismiss': 'modal'
+        }, {
+            click: function () {
+                previousRow(data);
+            }
+        })
+    ];
+
+    if (prevButton) {
+        bodyElements = [
+            makeElement('button', 'Previous Row', 'btn btn-primary', null, {
+                click: function () {
+                    previousRow(data);
+                }
+            })
+        ].concat(bodyElements);
+    }
+
+    if (nextButton) {
+        bodyElements.push(makeElement('button', 'Next Row', 'btn btn-primary', null, {
+            click: function () {
+                nextRow(data);
+            }
+        }));
+    }
+
+    modalFooter.innerHTML = '';
+    for (var i = 0; i < bodyElements.length; i++)
+        modalFooter.append(bodyElements[i]);
+
+    modalContent.appendChild(modalFooter);
+
+    // Return the modal
+    return modalElement;
+}
+
+
+function createForm(data) {
+
+    // First create the modal the form will live in 
+    var detailModal = createModal(data, 'Edit Row', true, true);
+    detailModalId = detailModal.getAttribute('id');
+
+    var formBody = $(detailModal).find('.modal-body');
     formBody.html('');
 
     // Basically just loop the columns and make inputs for the data
     for (var i = 0; i < data.columns.length; i++) {
+
+        // Create the form group
         var formElement = document.createElement('div');
         formElement.setAttribute('class', 'form-group');
         $(formElement).html('<label for="exampleInputEmail1">' + data.columns[i].name + '</label>');
 
-        var input = createInput(i, 0);
+        // Generate the input
+        var input = createInput(data, i, 0);
         input.setAttribute('class', 'form-control');
-        input.setAttribute('id', 'dval-' + i);
+        input.setAttribute('id', detailModalId + '-dval-' + i);
 
+        // then append it all
         formElement.appendChild(input);
         formBody.append(formElement);
     }
+
+    $('.content').append(detailModal);
 }
 
-function createTable(tableDiv, data) {
+function createTable(data) {
 
-    // Find the tbody element we are adding the items to
-    var tableEle = $('#' + tableDiv + ' > thead');
-    jsonData = data;
+    // generate the modal window that will contain our table
+    var tableModal = createModal(data, 'View Data', false, false);
+    tableModalId = tableModal.getAttribute('id');
 
-    // First do the header
-    var header = '<tr><th class="dark"></th>';
+    var modalBody = $(tableModal).find('.modal-body');
+    var tableContainer = document.createElement('div');
+    tableContainer.setAttribute('class', 'container table-wrapper');
+    var btn = document.createElement('button');
+    btn.className = 'btn btn-small btn-success';
+    btn.addEventListener('click', function () {
+        addNewRow(data);
+    });
+    btn.innerHTML = 'Add Row';
+    tableContainer.append(btn);
+
+    tableId = 'tbl-' + $('table').length;
+    console.log('Generating table with ID:', tableId);
+
+
+    // Create the base table element
+    var table = document.createElement('table');
+    table.setAttribute('id', tableId);
+
+    var header = document.createElement('thead');
+    table.appendChild(header);
+
+    var body = document.createElement('tbody');
+    table.appendChild(body);
+
+    var headerRow = document.createElement('tr');
+    header.appendChild(headerRow);
+
+    var numCol = document.createElement('th');
+    numCol.setAttribute('class', 'dark');
+    headerRow.appendChild(numCol);
 
     data.columns.forEach(function (column) {
 
@@ -72,23 +227,31 @@ function createTable(tableDiv, data) {
 
         column._cache = cache;
 
-        // Make the header
-        header += '<th class="dark">' + column.name + '</th>';
+        // generate the column
+        var col = document.createElement('th');
+        col.setAttribute('class', 'dark');
+        col.innerHTML = column.name;
+        headerRow.appendChild(col);
+
     });
 
-    header += '</tr>';
-    tableEle.html(header);
 
-    fillTableRows(tableDiv);
+    tableContainer.appendChild(table);
+    modalBody.html(tableContainer);
+
+    $('.content').append(tableModal);
+
+    fillTableRows(data);
 }
 
 
-function fillTableRows(tableDiv) {
-    var tableBody = $('#' + tableDiv + ' > tbody');
+
+function fillTableRows(data) {
+    var tableBody = $('#' + tableId + ' > tbody');
     tableBody.html('');
 
     // Then do the rows
-    for (var x = 0; x < jsonData.data.length; x++) {
+    for (var x = 0; x < data.data.length; x++) {
 
         // create the row element
         var tableRow = document.createElement('tr');
@@ -100,9 +263,9 @@ function fillTableRows(tableDiv) {
         $(numCell).html(x + 1);
         tableRow.appendChild(numCell);
 
-        for (var i = 0; i < jsonData.columns.length; i++) {
+        for (var i = 0; i < data.columns.length; i++) {
             var cell = document.createElement('td');
-            cell.appendChild(createInput(i, x));
+            cell.appendChild(createInput(data, i, x));
             tableRow.appendChild(cell);
         }
 
@@ -110,10 +273,9 @@ function fillTableRows(tableDiv) {
     }
 }
 
-function createInput(columnId, rowId) {
-
-    var column = jsonData.columns[columnId];
-    var row = jsonData.data[rowId];
+function createInput(data, columnId, rowId) {
+    var column = data.columns[columnId];
+    var row = data.data[rowId];
     var rowVal = row[columnId];
 
     // to prevent undefined
@@ -133,7 +295,9 @@ function createInput(columnId, rowId) {
 
             // Create our select box
             inputEle = document.createElement('select');
-            inputEle.setAttribute('onchange', 'endEdit(this)');
+            inputEle.addEventListener('change', function () {
+                endEdit(data, inputEle);
+            });
 
             // make our options
             for (var i = 0; i < values.length; i++) {
@@ -152,8 +316,12 @@ function createInput(columnId, rowId) {
     } else {
         // Based on column type we parse the value a bit differently
         inputEle = document.createElement('input');
-        inputEle.setAttribute('ondblclick', 'editRow(' + rowId + ')');
-        inputEle.setAttribute('onblur', 'endEdit(this)');
+        inputEle.addEventListener('dblclick', function () {
+            editRow(data, rowId);
+        });
+        inputEle.addEventListener('blur', function () {
+            endEdit(data, inputEle);
+        });
 
         switch (column.datatype) {
             case "string":
@@ -181,42 +349,54 @@ function createInput(columnId, rowId) {
     inputEle.setAttribute('data-col', columnId);
     inputEle.setAttribute('data-row', rowId);
     inputEle.setAttribute('data-old', rowVal);
-    inputEle.setAttribute('ondblclick', 'editRow(' + rowId + ')');
-    inputEle.setAttribute('onkeydown', 'keyDown(event)');
-    inputEle.setAttribute('tabIndex', (columnId + 1) + (rowId * jsonData.columns.length));
+    inputEle.addEventListener('dblclick', function () {
+        editRow(data, rowId);
+    });
+    inputEle.addEventListener('keydown', function (event) {
+        // Escape = cancel edits return to default, delete = delete the row
+        if (event.key === 'Escape') {
+            cancelEdit(event.target);
+        } else if (event.key === 'Delete') {
+            $(event.target).blur();
+            deleteRow(data, $(event.target).attr('data-row'));
+        }
+    });
+
+    inputEle.setAttribute('tabIndex', (columnId + 1) + (rowId * data.columns.length));
 
     // return it
     return inputEle;
 }
 
-
-function addNewRow() {
-    var rowId = jsonData.data.push(new Array(jsonData.columns.length));
-    addRowToTable(rowId - 1);
+function addNewRow(data) {
+    if (!data.hasInvalidField) {
+        data.data.push(new Array(data.columns.length));
+        fillTableRows(data);
+    }
 }
 
-function deleteRow(rowId) {
+function deleteRow(data, rowId) {
     // Remove the row fom the array and reload the table
-    jsonData.data.splice(rowId, 1);
-    fillTableRows('edit-table');
+    data.data.splice(rowId, 1);
+    fillTableRows(data); // to do: only delete the one row instead of rebuilding entire table
 }
 
-function editRow(rowId) {
+function editRow(data, rowId) {
 
     editRowId = rowId;
-    var columns = jsonData.columns;
+    var columns = data.columns;
 
     // For each item in the row set the value on the input
     for (var i = 0; i < columns.length; i++) {
 
         // Parse the value from the row
-        var val = jsonData.data[rowId][i];
+        var val = data.data[rowId][i];
         if (val != '' && columns[i].datatype === 'json') {
             val = JSON.stringify(val);
         }
 
         // Update the form input
-        var formInput = $('#dval-' + i);
+        var formInput = $('#' + detailModalId + '-dval-' + i);
         formInput.val(val);
         formInput.attr('data-col', i);
         formInput.attr('data-row', rowId);
@@ -224,11 +404,10 @@ function editRow(rowId) {
     }
 
     // present the modal
-    $('#myModal').modal('show');
+    $('#' + detailModalId).css('z-index', '9000').modal('show');
 }
 
-function endEdit(input) {
-
+function endEdit(data, input) {
     // Enusre we have an input element
     var inputEle = $(input);
     if (!inputEle) {
@@ -238,7 +417,7 @@ function endEdit(input) {
     // Get the column/row info 
     var columnId = inputEle.attr('data-col');
     var rowId = inputEle.attr('data-row');
-    var column = jsonData.columns[columnId];
+    var column = data.columns[columnId];
 
     // Pull the values out
     var oldVal = inputEle.attr('data-old');
@@ -249,7 +428,7 @@ function endEdit(input) {
         // Not valid, highlight the cell, focus, and flag invalid
         inputEle.css('border', '2px solid red');
         inputEle.focus();
-        hasInvalidField = true;
+        data.hasInvalidField = true;
         return;
     }
 
@@ -260,9 +439,9 @@ function endEdit(input) {
 
     // Update the array and the current input value
     inputEle.css('border', '');
-    jsonData.data[rowId][columnId] = newVal;
+    data.data[rowId][columnId] = newVal;
     inputEle.attr('data-old', newVal);
-    hasInvalidField = false;
+    data.hasInvalidField = false;
 }
 
 function cancelEdit(input) {
@@ -271,36 +450,30 @@ function cancelEdit(input) {
     inputEle.val(inputEle.attr('data-old'));
 }
 
-function nextRow() {
+function nextRow(data) {
     // Don't proceed if invalid field
-    if (hasInvalidField) {
-        return;
+    if (!data.hasInvalidField) {
+        // Set the next rowID
+        var newId = editRowId + 1;
+        if (newId >= data.data.length) {
+            newId = data.data.length - 1;
+        }
+        editRow(data, newId);
     }
-
-    // Set the next rowID
-    var newId = editRowId + 1;
-    if (newId >= jsonData.data.length) {
-        newId = jsonData.data.length - 1;
-    }
-
-    editRow(newId);
 }
 
-function previousRow() {
+function previousRow(data) {
     // Don't proceed if invalid field
-    if (hasInvalidField) {
-        return;
-    }
+    if (!data.hasInvalidField) {
+        // Set the next rowID
+        var newId = editRowId - 1;
+        if (newId < 0) {
+            newId = 0;
+        }
 
-    // Set the next rowID
-    var newId = editRowId - 1;
-    if (newId < 0) {
-        newId = 0;
+        editRow(data, newId);
     }
-
-    editRow(newId);
 }
-
 
 // Helper functions
 function validateInput(newValue, column) {
@@ -331,26 +504,22 @@ function validateJsonInput(input) {
     }
 }
 
-function rowDropped(oldIndex, newIndex) {
+function rowDropped(data, oldIndex, newIndex) {
     // If no change, no need to parse
     if (oldIndex === newIndex) {
         return;
     }
 
     // Move the old row index to the new one
-    var rowData = jsonData.data[oldIndex];
-    jsonData.data.splice(oldIndex, 1);
-    jsonData.data.splice(newIndex, 0, rowData);
+    var rowData = data.data[oldIndex];
+    data.data.splice(oldIndex, 1);
+    data.data.splice(newIndex, 0, rowData);
 
     // refresh the table
-    fillTableRows('edit-table');
+    fillTableRows(data);
 }
 
-function keyDown(event) {
-    // Escape = cancel edits return to default, delete = delete the row
-    if (event.key === 'Escape') {
-        cancelEdit(event.target);
-    } else if (event.key === 'Delete') {
-        deleteRow($(event.target).attr('data-row'));
-    }
+function presentTableModal() {
+    // present the data table
+    $('#' + tableModalId).modal('show');
 }
